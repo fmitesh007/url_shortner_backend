@@ -1,11 +1,16 @@
 const express = require("express");
-const { connectDB } = require("./src/db/db.js");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const helmet = require("helmet");
+const { connectDB } = require("./src/config/db.js");
 const urlRouter = require("./src/routes/urlRoutes.js");
 const userRouter = require("./src/routes/userRoutes.js");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const app = express();
 app.use(express.json());
+app.use(helmet());
+app.use(morgan("combined"));
 connectDB();
 
 const allowedOrigins = [
@@ -33,6 +38,15 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );
+
+app.use(
+  rateLimit({
+    windowMs: 5 * 60 * 1000,
+    limit: 100,
+    message: "too many requests try again in 5 mins",
+  }),
+);
+
 app.get("/", (req, res) => {
   res.send("hello world");
 });

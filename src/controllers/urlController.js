@@ -1,6 +1,7 @@
 const Url = require("../models/urlModel");
 const { nanoid } = require("nanoid");
 const geoip = require("geoip-lite");
+const { redis } = require("../config/redis.js");
 
 const createUrl = async (req, res) => {
   try {
@@ -12,6 +13,9 @@ const createUrl = async (req, res) => {
         message: "alias not available",
       });
     }
+    await redis.set(shortCode, originalUrl, {
+      ex: 60 * 60 * 24,
+    });
     const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
     const newUrl = new Url({
       originalUrl,
@@ -31,6 +35,12 @@ const createUrl = async (req, res) => {
 const redirectTO = async (req, res) => {
   try {
     const { shortCode } = req.params;
+    const cachedUrl = await redis.get(shortCode);
+    if (cachedUrl) {
+      console.log("Cache HIT");
+      return res.redirect(cachedUrl);
+    }
+    console.log("Cache MISS");
     const url = await Url.findOne({ shortCode });
     if (!url) {
       return res.status(404).json({
@@ -45,6 +55,7 @@ const redirectTO = async (req, res) => {
       `);
     if (currentDate.getTime() >= expDate.getTime()) {
       console.log("expired");
+      await redis.del(shortCode);
       return res.status(410).json({
         success: false,
         message: "Link expired",
@@ -63,6 +74,9 @@ const redirectTO = async (req, res) => {
         $push: { analytics: { device, country, timestamp: new Date() } },
       },
     );
+    await redis.set(shortCode, url.originalUrl, {
+      ex: 60 * 60 * 24,
+    });
     return res.redirect(url.originalUrl);
   } catch (err) {
     console.log(err);
@@ -99,6 +113,7 @@ const urlInfo = async (req, res) => {
 const deleteUrl = async (req, res) => {
   try {
     const { shortCode } = req.params;
+    await redis.del(shortCode);
     const url = await Url.findOneAndDelete({ shortCode });
     if (!url) {
       return res.status(404).json({
