@@ -14,9 +14,7 @@ const createUrl = async (req, res) => {
       });
     }
     const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
-    await redis.set(shortUrl, originalUrl, {
-      ex: 60 * 60 * 24,
-    });
+    await redis.set(shortUrl, originalUrl, { ex: 60 * 60 * 24 });
     const newUrl = new Url({
       originalUrl,
       expiresAt,
@@ -32,10 +30,10 @@ const createUrl = async (req, res) => {
   }
 };
 
-const redirectTO = async (req, res) => {
+const redirectTo = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
+    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
     const cachedUrl = await redis.get(shortUrl);
     if (cachedUrl) {
       console.log("Cache HIT");
@@ -49,6 +47,7 @@ const redirectTO = async (req, res) => {
         message: "URL not found",
       });
     }
+
     const currentDate = new Date(new Date().toISOString());
     const expDate = new Date(url.expiresAt);
     console.log(`current date is ${currentDate},
@@ -62,10 +61,11 @@ const redirectTO = async (req, res) => {
         message: "Link expired",
       });
     }
+
     const userAgent = req.headers["user-agent"] || "";
     const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
     const device = /mobile/i.test(userAgent) ? "mobile" : "desktop";
-    const geo = geoip.lookup(ip === "::1" ? "8.8.8.8" : ip);
+    const geo = geoip.lookup(ip);
     const country = geo ? geo.country : "Unknown";
     console.log(`ip is ${ip}, geo is ${geo}, country is ${country}`);
     await Url.updateOne(
@@ -75,9 +75,7 @@ const redirectTO = async (req, res) => {
         $push: { analytics: { device, country, timestamp: new Date() } },
       },
     );
-    await redis.set(shortUrl, url.originalUrl, {
-      ex: 60 * 60 * 24,
-    });
+    await redis.set(shortUrl, url.originalUrl, { ex: 60 * 60 * 24 });
     return res.redirect(url.originalUrl);
   } catch (err) {
     console.log(err);
@@ -114,7 +112,7 @@ const urlInfo = async (req, res) => {
 const deleteUrl = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
+    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
     await redis.del(shortUrl);
     const url = await Url.findOneAndDelete({ shortCode });
     if (!url) {
@@ -136,4 +134,4 @@ const deleteUrl = async (req, res) => {
   }
 };
 
-module.exports = { createUrl, redirectTO, urlInfo, deleteUrl };
+module.exports = { createUrl, redirectTo, urlInfo, deleteUrl };

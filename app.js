@@ -5,6 +5,7 @@ const helmet = require("helmet");
 const { connectDB } = require("./src/config/db.js");
 const urlRouter = require("./src/routes/urlRoutes.js");
 const userRouter = require("./src/routes/userRoutes.js");
+const shortRoute = require("./src/routes/shortrRoute.js");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const app = express();
@@ -18,9 +19,11 @@ const allowedOrigins = [
   "http://127.0.0.1:8080",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-  // "https://ai-task-manager-7ax0.onrender.com",
+  "http://localhost:5000",
+  "http://127.0.0.1:5000",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "https://url-shortner-backend-t53i.onrender.com",
 ];
 app.use(express.json());
 app.use(cookieParser());
@@ -53,5 +56,5 @@ app.get("/", (req, res) => {
 
 app.use("/api", urlRouter);
 app.use("/api", userRouter);
-
+app.use("/", shortRoute);
 module.exports = app;
