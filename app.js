@@ -25,7 +25,6 @@ const allowedOrigins = [
   "http://127.0.0.1:5173",
   "https://url-shortner-backend-t53i.onrender.com",
 ];
-app.use(express.json());
 app.use(cookieParser());
 app.use(
   cors({

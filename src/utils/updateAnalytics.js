@@ -19,6 +19,8 @@ const updateAnalytics = async (req, shortCode) => {
         $inc: { clicks: 1 },
         $push: {
           analytics: {
+            ip: cleanIp,
+            userAgent,
             device,
             country,
             timestamp: new Date(),

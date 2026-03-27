@@ -4,27 +4,76 @@ const { redis } = require("../config/redis.js");
 const { isExpired } = require("../utils/isExpired.js");
 const { updateAnalytics } = require("../utils/updateAnalytics.js");
 
+const getAllUrls = async (req, res) => {
+  try {
+    const urls = await Url.find({ userID: req.user }).sort({ createdAt: -1 });
+    const response = urls.map(u => ({
+      _id: u._id,
+      originalUrl: u.originalUrl,
+      shortCode: u.shortCode,
+      shortUrl: u.shortUrl,
+      clicks: u.clicks,
+      expiresAt: u.expiresAt,
+      createdAt: u.createdAt,
+      user: u.userID ? u.userID.toString() : undefined,
+    }));
+    return res.status(200).json(response);
+  } catch (err) {
+    console.log("getAllUrls error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const getAnalytics = async (req, res) => {
+  try {
+    const { shortCode } = req.params;
+    const url = await Url.findOne({ shortCode, userID: req.user });
+    if (!url) {
+      return res.status(404).json({ success: false, message: "URL not found" });
+    }
+    const deviceMap = {};
+    const countryMap = {};
+    for (const entry of url.analytics || []) {
+      deviceMap[entry.device] = (deviceMap[entry.device] || 0) + 1;
+      countryMap[entry.country] = (countryMap[entry.country] || 0) + 1;
+    }
+    const devices = Object.entries(deviceMap).map(([device, count]) => ({ device, count }));
+    const countries = Object.entries(countryMap).map(([country, count]) => ({ country, count }));
+    return res.status(200).json({
+      totalClicks: url.clicks,
+      devices,
+      countries,
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 const createUrl = async (req, res) => {
   try {
     const { originalUrl, expiresAt } = req.body;
     console.log(expiresAt);
-    const shortCode = req.body.alias ? req.body.alias : nanoid(7);
+    const shortCode = req.body.customAlias ? req.body.customAlias : nanoid(7);
     if (await Url.findOne({ shortCode })) {
       return res.status(409).json({
         success: false,
         message: "alias not available",
       });
     }
-    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
-    await redis.set(shortUrl, originalUrl, { ex: 60 * 60 * 24 });
+    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
+    await redis.set(shortCode, originalUrl, { ex: 60 * 60 * 24 });
     const newUrl = new Url({
       originalUrl,
       expiresAt,
       shortCode,
       shortUrl,
       createdAt: new Date(),
+      userID: req.user,
     });
+    console.log("createUrl -> saving with userID:", req.user, "shortCode:", shortCode);
     await newUrl.save();
+    console.log("createUrl -> saved! _id:", newUrl._id, "userID:", newUrl.userID);
     res.status(201).json(newUrl);
   } catch (err) {
     console.log(err);
@@ -35,38 +84,25 @@ const createUrl = async (req, res) => {
 const redirectTo = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-    const cachedUrl = await redis.get(shortUrl);
+    const cachedUrl = await redis.get(shortCode);
     if (cachedUrl) {
-      console.log("Cache HIT");
+      updateAnalytics(req, shortCode).catch(err => console.error("Analytics update failed:", err.message));
       return res.redirect(cachedUrl);
     }
-    console.log("Cache MISS");
     const url = await Url.findOne({ shortCode });
     if (!url) {
-      return res.status(404).json({
-        success: false,
-        message: "URL not found",
-      });
+      return res.status(404).json({ success: false, message: "URL not found" });
     }
-
     if (isExpired(url)) {
-      console.log("expired");
       await redis.del(shortCode);
-      return res.status(410).json({
-        success: false,
-        message: "Link expired",
-      });
+      return res.status(410).json({ success: false, message: "Link expired" });
     }
-    updateAnalytics(req, shortCode);
-    await redis.set(shortUrl, url.originalUrl, { ex: 60 * 60 * 24 });
+    updateAnalytics(req, shortCode).catch(err => console.error("Analytics update failed:", err.message));
+    await redis.set(shortCode, url.originalUrl, { ex: 60 * 60 * 24 });
     return res.redirect(url.originalUrl);
   } catch (err) {
     console.log(err);
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -96,8 +132,7 @@ const urlInfo = async (req, res) => {
 const deleteUrl = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-    await redis.del(shortUrl);
+    await redis.del(shortCode);
     const url = await Url.findOneAndDelete({ shortCode });
     if (!url) {
       return res.status(404).json({
@@ -118,4 +153,4 @@ const deleteUrl = async (req, res) => {
   }
 };
 
-module.exports = { createUrl, redirectTo, urlInfo, deleteUrl };
+module.exports = { createUrl, getAllUrls, getAnalytics, redirectTo, urlInfo, deleteUrl };

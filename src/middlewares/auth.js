@@ -7,13 +7,13 @@ module.exports = (req, res, next) => {
   }
 
   if (!token) {
-    return res.json({ message: "Login please" });
+    return res.status(401).json({ message: "Login please" });
   }
   try {
     const decoded = jwt.verify(token, process.env.JWTSECERET);
     req.user = decoded.id;
     next();
   } catch (err) {
-    return res.json(err);
+    return res.status(401).json({ message: "Invalid token", error: err.message });
   }
 };
