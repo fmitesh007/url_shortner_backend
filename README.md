@@ -15,7 +15,7 @@ A production-ready REST API for shortening URLs — featuring custom aliases, li
 | Auth | JWT + bcrypt |
 | ID Generation | nanoid |
 | Geo Lookup | geoip-lite |
-| Caching | Redis (ioredis) |
+| Caching | Upstash Redis (ioredis) |
 | Security | Helmet + express-rate-limit |
 | Logging | Morgan |
 | Misc | cors, cookie-parser, valid-url, dotenv |
@@ -40,24 +40,28 @@ A production-ready REST API for shortening URLs — featuring custom aliases, li
 
 ```
 ├── src/
-│   ├── controllers/
-│   │   ├── auth.controller.js
-│   │   └── url.controller.js
-│   ├── middlewares/
-│   │   ├── auth.middleware.js
-│   │   ├── rateLimit.middleware.js
-│   │   └── validate.middleware.js
-│   ├── models/
-│   │   ├── user.model.js
-│   │   └── url.model.js
-│   ├── routes/
-│   │   ├── auth.routes.js
-│   │   └── url.routes.js
 │   ├── config/
 │   │   ├── db.js
 │   │   └── redis.js
+│   ├── controllers/
+│   │   ├── urlController.js
+│   │   └── userController.js
+│   ├── middlewares/
+│   │   ├── auth.js
+│   │   ├── validateUrl.js
+│   │   └── validateUser.js
+│   ├── models/
+│   │   ├── urlModel.js
+│   │   └── userModel.js
+│   ├── routes/
+│   │   ├── shortRoute.js
+│   │   ├── urlRoutes.js
+│   │   └── userRoutes.js
 │   └── utils/
-│       └── generateShortCode.js
+│       ├── isExpired.js
+│       ├── updateAnalytics.js
+│       └── userValidater.js
+├── .env
 ├── app.js
 ├── server.js
 └── package.json
@@ -71,10 +75,11 @@ Create a `.env` file in the root directory:
 
 ```env
 PORT=5000
-MONGO_URI=mongodb://localhost:27017/urlshortener
-JWT_SECRET=your_jwt_secret_here
+MONGOURL=mongodb://localhost:27017/urlshortener
 BASE_URL=http://localhost:5000
-REDIS_URL=redis://localhost:6379
+JWTSECERET=your_jwt_secret_here
+UPSTASH_REDIS_REST_URL=https://your-upstash-redis-url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_token
 ```
 
 ---
@@ -93,11 +98,13 @@ npm install
 npm run dev
 ```
 
-> Make sure MongoDB and Redis are running locally before starting the server.
+> Make sure MongoDB is running locally (or use a hosted URI). Redis is handled via Upstash — no local setup needed.
 
 ---
 
 ## 🔐 Auth Endpoints
+
+Routes served by `userRoutes.js`
 
 ### Register
 
@@ -152,6 +159,8 @@ POST /api/auth/login
 
 ## 🌐 URL Endpoints
 
+Routes served by `urlRoutes.js`
+
 ### Create Short URL
 
 ```
@@ -186,11 +195,13 @@ POST /api/url
 
 ### Redirect
 
+Route served by `shortRoute.js`
+
 ```
 GET /:shortCode
 ```
 
-Checks Redis first, falls back to MongoDB. Increments the click counter and records analytics on every hit.
+Checks Redis first, falls back to MongoDB. Increments the click counter and records analytics (IP, User-Agent, country via geoip-lite) on every hit.
 
 - Expired link → `410 Gone`
 - Unknown short code → `404 Not Found`
@@ -287,7 +298,7 @@ DELETE /api/url/:shortCode
 
 ## 🗄️ Database Schema
 
-### URL Model
+### URL Model (`urlModel.js`)
 
 ```js
 {
@@ -309,7 +320,7 @@ DELETE /api/url/:shortCode
 }
 ```
 
-### User Model
+### User Model (`userModel.js`)
 
 ```js
 {
@@ -338,15 +349,26 @@ Cache entries are invalidated on link deletion or expiry.
 
 ## 🛡️ Middleware
 
-| Middleware | Purpose |
+| File | Purpose |
 |---|---|
+| `auth.js` | JWT verification on protected routes |
+| `validateUrl.js` | Zod validation for URL request bodies |
+| `validateUser.js` | Zod validation for auth request bodies |
 | `helmet` | Secure HTTP response headers |
 | `morgan` | HTTP request logging |
 | `express-rate-limit` | Abuse and brute-force protection |
 | `cors` | Cross-origin request handling |
 | `cookie-parser` | Cookie parsing support |
-| `auth.middleware` | JWT verification on protected routes |
-| `validate.middleware` | Zod schema validation on request bodies |
+
+---
+
+## 🔧 Utilities
+
+| File | Purpose |
+|---|---|
+| `isExpired.js` | Checks if a URL's `expiresAt` has passed |
+| `updateAnalytics.js` | Records IP, User-Agent, and country on each redirect |
+| `userValidater.js` | Shared Zod schemas for user input validation |
 
 ---
 
@@ -365,4 +387,4 @@ Cache entries are invalidated on link deletion or expiry.
 
 ## 📄 License
 
-ISC
+MIT

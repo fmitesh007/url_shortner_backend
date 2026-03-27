@@ -1,11 +1,13 @@
 const Url = require("../models/urlModel");
 const { nanoid } = require("nanoid");
-const geoip = require("geoip-lite");
 const { redis } = require("../config/redis.js");
+const { isExpired } = require("../utils/isExpired.js");
+const { updateAnalytics } = require("../utils/updateAnalytics.js");
 
 const createUrl = async (req, res) => {
   try {
     const { originalUrl, expiresAt } = req.body;
+    console.log(expiresAt);
     const shortCode = req.body.alias ? req.body.alias : nanoid(7);
     if (await Url.findOne({ shortCode })) {
       return res.status(409).json({
@@ -48,12 +50,7 @@ const redirectTo = async (req, res) => {
       });
     }
 
-    const currentDate = new Date(new Date().toISOString());
-    const expDate = new Date(url.expiresAt);
-    console.log(`current date is ${currentDate},
-      exp date is ${expDate}
-      `);
-    if (currentDate.getTime() >= expDate.getTime()) {
+    if (isExpired(url)) {
       console.log("expired");
       await redis.del(shortCode);
       return res.status(410).json({
@@ -61,20 +58,7 @@ const redirectTo = async (req, res) => {
         message: "Link expired",
       });
     }
-
-    const userAgent = req.headers["user-agent"] || "";
-    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
-    const device = /mobile/i.test(userAgent) ? "mobile" : "desktop";
-    const geo = geoip.lookup(ip);
-    const country = geo ? geo.country : "Unknown";
-    console.log(`ip is ${ip}, geo is ${geo}, country is ${country}`);
-    await Url.updateOne(
-      { shortCode },
-      {
-        $inc: { clicks: 1 },
-        $push: { analytics: { device, country, timestamp: new Date() } },
-      },
-    );
+    updateAnalytics(req, shortCode);
     await redis.set(shortUrl, url.originalUrl, { ex: 60 * 60 * 24 });
     return res.redirect(url.originalUrl);
   } catch (err) {
