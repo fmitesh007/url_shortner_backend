@@ -13,10 +13,10 @@ const createUrl = async (req, res) => {
         message: "alias not available",
       });
     }
-    await redis.set(shortCode, originalUrl, {
+    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
+    await redis.set(shortUrl, originalUrl, {
       ex: 60 * 60 * 24,
     });
-    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
     const newUrl = new Url({
       originalUrl,
       expiresAt,
@@ -35,7 +35,8 @@ const createUrl = async (req, res) => {
 const redirectTO = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    const cachedUrl = await redis.get(shortCode);
+    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
+    const cachedUrl = await redis.get(shortUrl);
     if (cachedUrl) {
       console.log("Cache HIT");
       return res.redirect(cachedUrl);
@@ -74,7 +75,7 @@ const redirectTO = async (req, res) => {
         $push: { analytics: { device, country, timestamp: new Date() } },
       },
     );
-    await redis.set(shortCode, url.originalUrl, {
+    await redis.set(shortUrl, url.originalUrl, {
       ex: 60 * 60 * 24,
     });
     return res.redirect(url.originalUrl);
@@ -113,7 +114,8 @@ const urlInfo = async (req, res) => {
 const deleteUrl = async (req, res) => {
   try {
     const { shortCode } = req.params;
-    await redis.del(shortCode);
+    const shortUrl = `${process.env.BASE_URL}/api/${shortCode}`;
+    await redis.del(shortUrl);
     const url = await Url.findOneAndDelete({ shortCode });
     if (!url) {
       return res.status(404).json({
